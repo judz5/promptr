@@ -1,0 +1,6 @@
+streamlit
+aiohttp
+requests
+datasets
+python-dotenv
+pandas
