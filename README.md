@@ -29,7 +29,7 @@ Then simply configure your endpoints in the launched GUI and begin promptring.
 
 - [x] Customizable Endpoints
 - [x] Basic Dataset Configurations
-- [ ] Customizable Datasets 
+- [x] Customizable Datasets 
 - [x] Radar graph comparison
 - [ ] Customizable Graphs/Comparisons
 - [ ] Customizable Blocking Detection
