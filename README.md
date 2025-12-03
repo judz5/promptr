@@ -7,7 +7,7 @@ The results are then stored in a CSV and parsed to make some insightful graphs f
 
 ### Why?
 
-You can compare block rates between Palo Alto Prisma AIRS, AWS Bedrock, or any other AI protection systems you utilize! Simply configure the blocking behavior (WIP), and Promptr can begin tracking effectiveness. 
+You can compare block rates between Palo Alto Prisma AIRS, AWS Bedrock, or any other AI protection systems you use. Simply configure the blocking behavior (WIP), and Promptr can begin tracking effectiveness. 
 
 ## Use
 
