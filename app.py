@@ -200,7 +200,7 @@ def compute_metrics_single(df):
     }
 
 def render_multi_results_ui(df, metadata):
-    """Renders results and metrics for multi-system tests."""
+    """Renders results and metrics for multi-system tests with customizable visualizations."""
     st.divider()
     
     # 1. Overall Metrics
@@ -212,61 +212,147 @@ def render_multi_results_ui(df, metadata):
     with m_col3:
         st.metric("Total Requests", metadata['total_requests'])
 
-    st.subheader("Performance Summary")
-    
-    # 2. Group by Configuration for Metrics
+    # 2. Prepare Metrics Data
     metric_dfs = []
-    
-    # Get unique configurations (System Name - Model Name)
     unique_configs = df[['system_name', 'model_name', 'test_id']].drop_duplicates().to_dict('records')
     
-    # Calculate metrics for each unique configuration
     for config in unique_configs:
         config_df = df[df['test_id'] == config['test_id']]
-        metrics = compute_metrics_single(config_df) # Call a new, simpler compute function
+        metrics = compute_metrics_single(config_df) 
         metrics['Configuration'] = f"{config['system_name']} - {config['model_name']}"
-        metrics['Model'] = config['model_name']
-        metrics['Endpoint'] = config['system_name']
         metric_dfs.append(metrics)
 
     metrics_df = pd.DataFrame(metric_dfs)
+
+    # ---------------------------------------------------------
+    # VISUALIZATION BUILDER
+    # ---------------------------------------------------------
+    st.subheader("📊 Visualization Analysis")
     
+    # Control Panel
+    with st.expander("🛠️ Customize Chart", expanded=True):
+        c_col1, c_col2 = st.columns(2)
+        with c_col1:
+            chart_type = st.selectbox(
+                "Select Chart Type",
+                ["Radar Chart (Holistic)", "Grouped Bar (Metric Comparison)", "Stacked Bar (Result Distribution)"],
+                help="Choose how you want to compare the models."
+            )
+        with c_col2:
+            # Only show metric selector if not using the Distribution chart
+            if "Distribution" not in chart_type:
+                selected_metrics = st.multiselect(
+                    "Select Metrics to Plot",
+                    ['Accuracy', 'Precision', 'Recall', 'F1 Score'],
+                    default=['Accuracy', 'Precision', 'Recall', 'F1 Score']
+                )
+            else:
+                st.info("Distribution chart shows raw counts of TP, FP, TN, FN.")
+
+    # ---------------------------------------------------------
+    # CHART LOGIC
+    # ---------------------------------------------------------
+    
+    # 1. RADAR CHART
+    if "Radar" in chart_type and selected_metrics:
+        # 
+        fig = go.Figure()
+        
+        for idx, row in metrics_df.iterrows():
+            values = [row[m] for m in selected_metrics]
+            # Close the loop for radar chart
+            values.append(values[0])
+            cats_closed = selected_metrics + [selected_metrics[0]]
+            
+            fig.add_trace(go.Scatterpolar(
+                r=values,
+                theta=cats_closed,
+                fill='toself',
+                name=row['Configuration']
+            ))
+
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+            title="Model Performance Radar",
+            height=500
+        )
+        st.plotly_chart(fig, width='stretch')
+
+    # 2. GROUPED BAR CHART
+    elif "Grouped Bar" in chart_type and selected_metrics:
+        fig = go.Figure()
+        
+        for metric in selected_metrics:
+            fig.add_trace(go.Bar(
+                name=metric,
+                x=metrics_df['Configuration'],
+                y=metrics_df[metric],
+                text=metrics_df[metric].apply(lambda x: f'{x:.1%}'),
+                textposition='auto'
+            ))
+
+        fig.update_layout(
+            barmode='group',
+            title="Metric Comparison by Model",
+            yaxis_title="Score (0-1)",
+            height=500
+        )
+        st.plotly_chart(fig, width='stretch')
+
+    # 3. STACKED BAR (DISTRIBUTION)
+    elif "Distribution" in chart_type:
+        # 
+        # We need to aggregate raw counts from the main 'df'
+        dist_data = []
+        for config in unique_configs:
+            sub_df = df[df['test_id'] == config['test_id']]
+            counts = sub_df['class'].value_counts()
+            row = {
+                'Configuration': f"{config['system_name']} - {config['model_name']}",
+                'TP': counts.get('TP', 0),
+                'TN': counts.get('TN', 0),
+                'FP': counts.get('FP', 0),
+                'FN': counts.get('FN', 0),
+                'ERR': counts.get('ERR', 0)
+            }
+            dist_data.append(row)
+        
+        dist_df = pd.DataFrame(dist_data)
+        
+        fig = go.Figure()
+        colors = {'TP': '#00CC96', 'TN': '#636EFA', 'FP': '#EF553B', 'FN': '#FFA15A', 'ERR': '#808080'}
+        
+        for status in ['TP', 'TN', 'FP', 'FN', 'ERR']:
+            if status in dist_df.columns and dist_df[status].sum() > 0:
+                fig.add_trace(go.Bar(
+                    name=status,
+                    x=dist_df['Configuration'],
+                    y=dist_df[status],
+                    marker_color=colors.get(status)
+                ))
+
+        fig.update_layout(
+            barmode='stack',
+            title="Result Distribution (TP/TN/FP/FN)",
+            yaxis_title="Count",
+            height=500
+        )
+        st.plotly_chart(fig, width='stretch')
+
+    else:
+        st.warning("Please select at least one metric to display.")
+
+    # ---------------------------------------------------------
+    # DATA TABLES
+    # ---------------------------------------------------------
+    st.subheader("Detailed Performance Metrics")
     st.dataframe(
-        metrics_df[['Configuration', 'Accuracy', 'Precision', 'Recall', 'F1 Score']].set_index('Configuration').style.format('{:.2%}'),
+        metrics_df.set_index('Configuration').style.format('{:.2%}'),
         width='stretch'
     )
     
-    st.subheader("📡 Performance Radar Chart Comparison")
-    
-    # 3. Radar Chart Comparison
-    categories = ['Accuracy', 'Precision', 'Recall', 'F1 Score']
-    fig = go.Figure()
-
-    for idx, row in metrics_df.iterrows():
-        # Use dictionary-style access instead of namedtuple attributes
-        values = [row[cat] for cat in categories]
-        values.append(values[0])  # Close loop
-        
-        fig.add_trace(go.Scatterpolar(
-            r=values,
-            theta=categories + [categories[0]],
-            fill="toself",
-            name=row['Configuration']
-        ))
-
-    fig.update_layout(
-        polar=dict(
-            radialaxis=dict(visible=True, range=[0, 1])
-        ),
-        title="Model Performance Comparison",
-        legend_title="Configuration"
-    )
-
-    st.plotly_chart(fig)
-
-    st.subheader("Detailed Results")
-    # st.dataframe(df.drop(columns=['output']), width='stretch')
-    st.dataframe(df, width='stretch')
+    with st.expander("View Raw Output Data"):
+        st.dataframe(df, width='stretch')
 
 # -----------------------------------------------------------------------------
 # 3. ASYNC LOGIC
